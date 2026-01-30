@@ -42,7 +42,7 @@ import {
 import { useLocalStorage } from "@vueuse/core";
 import { Modal } from "ant-design-vue";
 import prettyBytes, { type Options as PrettyOptions } from "pretty-bytes";
-import { computed, h, onUnmounted } from "vue";
+import { computed, h, onUnmounted, ref } from "vue";
 import type { TagInfo } from "../../components/interface";
 import { GLOBAL_INSTANCE_NAME } from "../../config/const";
 import { useTerminal, type UseTerminalHook } from "../../hooks/useTerminal";
@@ -338,6 +338,16 @@ const terminalTopTags = computed<TagInfo[]>(() => {
   ]);
 });
 
+const isAgentVisible = ref(true);
+const toggleAgent = () => {
+  isAgentVisible.value = !isAgentVisible.value;
+};
+
+const panelHeightStyle = computed(() => {
+  if (isPhone.value) return undefined;
+  return { height: `${props.card.height}px` };
+});
+
 onUnmounted(() => {
   if (checkRunningTimer) clearTimeout(checkRunningTimer);
 });
@@ -419,6 +429,9 @@ onUnmounted(() => {
                 </a-button>
               </a-popconfirm>
             </template>
+            <a-button class="ml-8" @click="toggleAgent">
+              {{ isAgentVisible ? '隱藏助理' : '顯示助理' }}
+            </a-button>
           </div>
 
           <a-dropdown v-else>
@@ -442,16 +455,35 @@ onUnmounted(() => {
         </template>
       </BetweenMenus>
     </div>
-    <div class="mb-10 justify-end">
+
+    <div class="mb-10 flex justify-end">
       <TerminalTags :tags="terminalTopTags" />
     </div>
-    <TerminalCore
-      v-if="instanceId && daemonId"
-      :use-terminal-hook="terminalHook"
-      :instance-id="instanceId"
-      :daemon-id="daemonId"
-      :height="card.height"
-    />
+    <!-- Agent Scope + Terminal 並排佈局 -->
+    <div class="terminal-agent-container">
+      <div class="terminal-main" :style="panelHeightStyle">
+        <TerminalCore
+          v-if="instanceId && daemonId"
+          :use-terminal-hook="terminalHook"
+          :instance-id="instanceId"
+          :daemon-id="daemonId"
+          :height="card.height"
+        />
+      </div>
+      <div
+        class="agent-sidebar"
+        v-if="instanceId && daemonId"
+        v-show="isAgentVisible"
+        :style="panelHeightStyle"
+      >
+        <iframe
+          class="agent-iframe"
+          :src="`http://127.0.0.1:8001/static/agent.html?daemon=${daemonId}&instance=${instanceId}`"
+          frameborder="0"
+          allow="clipboard-write"
+        ></iframe>
+      </div>
+    </div>
   </div>
 
   <!-- Other Page View -->
@@ -604,4 +636,48 @@ onUnmounted(() => {
     }
   }
 }
+
+/* Agent Scope Sidebar */
+.terminal-agent-container {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  transition: all 0.3s ease;
+  align-items: stretch;
+}
+
+.terminal-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-sidebar {
+  width: 380px;
+  align-self: stretch;
+  background: #0f172a;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  display: flex;
+  position: relative;
+}
+
+.agent-iframe {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 響應式優化 */
+@media (max-width: 1200px) {
+  .terminal-agent-container {
+    flex-direction: column;
+  }
+  .agent-sidebar {
+    width: 100%;
+    height: 500px;
+  }
+}
+
 </style>
