@@ -170,7 +170,10 @@ export class ModService {
     if (page < 1) page = 1;
 
     const fileManager = getFileManager(instanceUuid);
-    const rootDir = fileManager.toAbsolutePath(".");
+
+    // if (!FileManager.checkFileName(folder ?? "")) {
+    //   throw new Error("Invalid folder name");
+    // }
 
     const result: ModInfo[] = [];
     const folders: string[] = [];
