@@ -343,6 +343,34 @@ const toggleAgent = () => {
   isAgentVisible.value = !isAgentVisible.value;
 };
 
+// Horizontal Splitter - 可拖曳調整寬度
+const agentWidth = ref(380);
+const isDragging = ref(false);
+const minAgentWidth = 280;
+const maxAgentWidth = 600;
+
+const startDrag = (e: MouseEvent) => {
+  isDragging.value = true;
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup', stopDrag);
+  e.preventDefault();
+};
+
+const onDrag = (e: MouseEvent) => {
+  if (!isDragging.value) return;
+  const container = document.querySelector('.terminal-agent-container');
+  if (!container) return;
+  const containerRect = container.getBoundingClientRect();
+  const newWidth = containerRect.right - e.clientX;
+  agentWidth.value = Math.min(maxAgentWidth, Math.max(minAgentWidth, newWidth));
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
+};
+
 const panelHeightStyle = computed(() => {
   if (isPhone.value) return undefined;
   return { height: `${props.card.height}px` };
@@ -470,11 +498,17 @@ onUnmounted(() => {
           :height="card.height"
         />
       </div>
+      <!-- Horizontal Splitter -->
+      <div
+        v-if="instanceId && daemonId && isAgentVisible"
+        class="splitter-handle"
+        @mousedown="startDrag"
+      ></div>
       <div
         class="agent-sidebar"
         v-if="instanceId && daemonId"
         v-show="isAgentVisible"
-        :style="panelHeightStyle"
+        :style="{ ...panelHeightStyle, width: `${agentWidth}px` }"
       >
         <iframe
           class="agent-iframe"
@@ -667,6 +701,21 @@ onUnmounted(() => {
 .agent-iframe {
   flex: 1;
   min-height: 0;
+}
+
+/* Splitter Handle */
+.splitter-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s ease;
+  border-radius: 3px;
+  margin: 0 2px;
+
+  &:hover,
+  &:active {
+    background: #3b82f6;
+  }
 }
 
 /* 響應式優化 */
