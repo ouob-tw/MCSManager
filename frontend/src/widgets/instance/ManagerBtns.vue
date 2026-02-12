@@ -37,6 +37,7 @@ import McPingSettings from "./dialogs/McPingSettings.vue";
 import PingConfig from "./dialogs/PingConfig.vue";
 import RconSettings from "./dialogs/RconSettings.vue";
 import TermConfig from "./dialogs/TermConfig.vue";
+import SftpgoDetail from "./dialogs/SftpgoDetail.vue";
 
 const terminalConfigDialog = ref<InstanceType<typeof TermConfig>>();
 const rconSettingsDialog = ref<InstanceType<typeof RconSettings>>();
@@ -46,6 +47,7 @@ const eventConfigDialog = ref<InstanceType<typeof EventConfig>>();
 const pingConfigDialog = ref<InstanceType<typeof PingConfig>>();
 const instanceDetailsDialog = ref<InstanceType<typeof InstanceDetail>>();
 const instanceFundamentalDetailDialog = ref<InstanceType<typeof InstanceFundamentalDetail>>();
+const sftpgoDetailDialog = ref<InstanceType<typeof SftpgoDetail>>();
 
 const { toPage: toOtherPager } = useAppRouters();
 
@@ -228,6 +230,14 @@ const btns = computed(() => {
       condition: () => instanceInfo.value?.config.type.includes(TYPE_MINECRAFT_JAVA) ?? false
     },
     {
+      title: "SFTP Settings", // TODO: i18n
+      icon: FolderOpenOutlined,
+      click: () => {
+        sftpgoDetailDialog.value?.openDialog();
+      },
+      condition: () => !isGlobalTerminal.value
+    },
+    {
       title: t("TXT_CODE_4f34fc28"),
       icon: AppstoreAddOutlined,
       condition: () =>
@@ -334,6 +344,13 @@ watch(instanceInfo, (cfg, oldCfg) => {
     :daemon-id="daemonId"
     :instance-id="instanceId"
     @update="refreshInstanceInfo"
+  />
+
+  <SftpgoDetail
+    ref="sftpgoDetailDialog"
+    :instance-info="instanceInfo"
+    :instance-id="instanceId"
+    :daemon-id="daemonId"
   />
 </template>
 
