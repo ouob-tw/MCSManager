@@ -1,12 +1,11 @@
 import { useDefineApi } from "@/stores/useDefineApi";
 
-// The base URL for the MCSMSftpgo Python Service
-// We assume it runs on port 8002 relative to the current hostname
-const SFTPGO_SERVICE_PORT = 8002;
+// The base URL for the SFTPGo bridge endpoints on the MCSM backend (port 8000)
+const SFTPGO_SERVICE_PORT = 8000;
 const getServiceUrl = () => {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
-    return `${protocol}//${hostname}:${SFTPGO_SERVICE_PORT}`;
+    return `${protocol}//${hostname}:${SFTPGO_SERVICE_PORT}/sftpgo`;
 };
 
 // Define the response types

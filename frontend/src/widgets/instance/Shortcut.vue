@@ -20,6 +20,7 @@ import { parseTimestamp } from "@/tools/time";
 import { reportErrorMsg } from "@/tools/validator";
 import type { InstanceDetail, LayoutCard } from "@/types/index";
 import {
+  CalendarOutlined,
   CheckCircleOutlined,
   CloseOutlined,
   CloudDownloadOutlined,
@@ -35,14 +36,60 @@ import {
 import { message, Modal } from "ant-design-vue";
 import _ from "lodash";
 import { computed, ref } from "vue";
+import { renewDaily, type PanelInstance } from "@/services/apis/panel";
 
 const props = defineProps<{
   card: LayoutCard;
   targetInstanceInfo?: InstanceDetail;
   targetDaemonId?: string;
+  panelInstance?: PanelInstance;
+  dailyPrice?: number;
 }>();
 
 const emits = defineEmits(["refreshList"]);
+
+const isExpired = computed(() => {
+  if (!props.panelInstance?.expire_at) return false;
+  return new Date(props.panelInstance.expire_at) < new Date();
+});
+
+const formattedExpire = computed(() => {
+  if (!props.panelInstance?.expire_at) return null;
+  return new Date(props.panelInstance.expire_at).toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    hour12: false
+  });
+});
+
+const renewLoading = ref(false);
+
+const handleRenew = async (event: MouseEvent) => {
+  event.stopPropagation();
+  const inst = props.panelInstance;
+  if (!inst) return;
+  const cost = props.dailyPrice ?? 0;
+  Modal.confirm({
+    title: "確認續費",
+    content: `花費 ${cost} 金幣，為此伺服器續費 24 小時？`,
+    onOk: async () => {
+      renewLoading.value = true;
+      try {
+        await renewDaily(inst.id, 24, cost);
+        message.success("續費成功！");
+        refreshList();
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail;
+        if (detail === "insufficient_balance") {
+          message.error("金幣不足");
+        } else {
+          message.error(detail || "續費失敗，請稍後再試");
+        }
+      } finally {
+        renewLoading.value = false;
+      }
+    }
+  });
+};
 
 const { containerState } = useLayoutContainerStore();
 const { getMetaOrRouteValue } = useLayoutCardTools(props.card);
@@ -320,6 +367,30 @@ const instanceOperations = computed(() =>
               {{ instanceInfo?.info.currentPlayers }} / {{ instanceInfo?.info.maxPlayers }}
             </span>
           </div>
+
+          <template v-if="panelInstance">
+            <div class="instance-info-line">
+              <span class="title">計費:</span>
+              <a-tag
+                :color="panelInstance.billing_type === 'monthly' ? 'blue' : 'green'"
+                class="m-0"
+                style="font-size: 11px; line-height: 18px"
+              >
+                {{ panelInstance.billing_type === "monthly" ? "月租" : "日租" }}
+              </a-tag>
+            </div>
+            <div v-if="formattedExpire" class="instance-info-line">
+              <span class="title">到期:</span>
+              <span
+                class="value"
+                :style="isExpired ? 'color: #ff4d4f; font-weight: 600' : ''"
+              >
+                <CalendarOutlined />
+                {{ formattedExpire }}
+                <span v-if="isExpired">（已到期）</span>
+              </span>
+            </div>
+          </template>
         </a-typography-paragraph>
 
         <a-space warp :size="6" class="mb-4">
@@ -338,6 +409,18 @@ const instanceOperations = computed(() =>
             </a-tooltip>
           </div>
         </a-space>
+
+        <div v-if="panelInstance && panelInstance.billing_type === 'daily'" class="renew-bar" @click.stop>
+          <a-button
+            size="small"
+            type="primary"
+            ghost
+            :loading="renewLoading"
+            @click="handleRenew"
+          >
+            续费 24h（{{ dailyPrice ?? 0 }} 金幣）
+          </a-button>
+        </div>
       </div>
     </template>
   </CardPanel>
@@ -381,5 +464,9 @@ const instanceOperations = computed(() =>
   .value {
     opacity: 0.8;
   }
+}
+
+.renew-bar {
+  margin-top: 6px;
 }
 </style>

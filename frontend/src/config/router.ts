@@ -4,6 +4,7 @@ import type { LoginUserInfo } from "@/types/user";
 import InstallPage from "@/views/Install.vue";
 import LayoutContainer from "@/views/LayoutContainer.vue";
 import LoginPage from "@/views/Login.vue";
+import ServicesPage from "@/views/Services.vue";
 import {
   createRouter,
   createWebHashHistory,
@@ -282,6 +283,15 @@ const originRouterConfig: RouterConfig[] = [
       permission: ROLE.USER,
       mainMenu: true,
       onlyDisplayEditMode: true
+    }
+  },
+  {
+    path: "/services",
+    name: "加值服務",
+    component: ServicesPage,
+    meta: {
+      permission: ROLE.USER,
+      mainMenu: true
     }
   },
   {

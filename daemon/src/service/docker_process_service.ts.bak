@@ -99,6 +99,7 @@ export class SetupDockerContainer extends AsyncTask {
     for (const item of extraVolumes) {
       if (!item) throw new Error($t("TXT_CODE_ae441ea3"));
       const paths = item.split("|");
+      console.log(`DEBUG: item="${item}" paths.length=${paths.length}`);
       if (paths.length < 2) throw new Error($t("TXT_CODE_dca030b8"));
       const hostPath = path.normalize(paths[0]);
       const containerPath = path.normalize(paths[1]);
@@ -164,7 +165,7 @@ export class SetupDockerContainer extends AsyncTask {
       const hostPath = await instance.parseTextParams(v.hostPath);
       if (!fs.existsSync(hostPath)) fs.mkdirsSync(hostPath);
       // Force use forward slashes for Linux container mounts
-      const targetPath = (await instance.parseTextParams(v.containerPath)).replace(/\\/g, "/").replace(/\/$/, "");
+      const targetPath = (await instance.parseTextParams(v.containerPath)).replace(/\\/g, "/");
       mounts.push({
         Type: "bind",
         Source: hostPath,
@@ -175,7 +176,7 @@ export class SetupDockerContainer extends AsyncTask {
       mounts.push({
         Type: "bind",
         Source: cwd,
-        Target: (await instance.parseTextParams(workingDir)).replace(/\/$/, "")
+        Target: await instance.parseTextParams(workingDir)
       });
     }
 
@@ -188,6 +189,7 @@ export class SetupDockerContainer extends AsyncTask {
     logger.info(`NET_MODE: ${dockerConfig.networkMode}`);
     logger.info(`OPEN_PORT: ${JSON.stringify(publicPortArray)}`);
     logger.info(`Volume Mounts: ${JSON.stringify(mounts)}`);
+    console.log(`DEBUG: Final Mounts: ${JSON.stringify(mounts)}`);
     logger.info(`NET_ALIASES: ${JSON.stringify(dockerConfig.networkAliases)}`);
 
     logger.info(
@@ -235,56 +237,10 @@ export class SetupDockerContainer extends AsyncTask {
     logger.info(`Docker Version: ${dockerVersion}`);
     logger.info("----------------");
 
-    this.container = await docker.createContainer({
-      Entrypoint: entrypoint,
-      Cmd: startCmd,
-      name: containerName,
-      Hostname: containerName,
-      Image: dockerConfig.image,
-      AttachStdin: true,
-      AttachStdout: true,
-      AttachStderr: true,
-      Tty: isTty,
-      WorkingDir: dockerConfig.changeWorkdir ? workingDir : undefined,
-      OpenStdin: true,
-      StdinOnce: false,
-      ExposedPorts: exposedPorts,
-      Env: dockerConfig?.env || [],
-      User: instance.config.runAs || undefined,
-      Labels: {
-        ...dockerConfig.labels
-          ?.map((label) => {
-            const [key, ...rest] = label.split("=");
-            return { [key]: rest.join("=") };
-          })
-          .reduce((acc, cur) => ({ ...acc, ...cur }), {}),
-        "mcsmanager.instance.uuid": instance.instanceUuid
       },
-      HostConfig: {
-        Memory: maxMemory,
-        MemorySwap: memorySwap,
-        MemorySwappiness: memorySwappiness,
-        AutoRemove: true,
-        CpusetCpus: cpusetCpus,
-        CpuPeriod: cpuPeriod,
-        CpuQuota: cpuQuota,
-        PortBindings: publicPortArray,
-        NetworkMode: dockerConfig.networkMode,
-        Mounts: mounts
-      },
-      // Only set NetworkingConfig for non-host network modes
-      // host mode uses the host's network stack and doesn't support EndpointsConfig
-      ...(dockerConfig.networkMode !== "host" &&
-        dockerConfig.networkMode !== "none" && {
-        NetworkingConfig: {
-          EndpointsConfig: {
-            [dockerConfig.networkMode || "bridge"]: {
-              Aliases: dockerConfig.networkAliases
-            }
-          }
-        }
-      })
-    });
+    };
+    console.log(`DEBUG: CreateContainer Options: ${JSON.stringify(createOptions, null, 2)}`);
+    this.container = await docker.createContainer(createOptions);
 
     await this.container.start();
 

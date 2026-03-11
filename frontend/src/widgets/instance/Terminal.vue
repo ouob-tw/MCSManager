@@ -512,7 +512,7 @@ onUnmounted(() => {
       >
         <iframe
           class="agent-iframe"
-          :src="`http://127.0.0.1:8001/static/agent.html?daemon=${daemonId}&instance=${instanceId}`"
+          :src="`http://localhost:8000/static/agent.html?daemon=${daemonId}&instance=${instanceId}`"
           frameborder="0"
           allow="clipboard-write"
         ></iframe>

@@ -13,10 +13,23 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   RedoOutlined,
+  ReloadOutlined,
+  ScheduleOutlined,
   SearchOutlined,
+  ShoppingCartOutlined,
+  WalletOutlined,
   WarningOutlined
 } from "@ant-design/icons-vue";
 import { computed, h, onMounted, ref } from "vue";
+import { useAppStateStore } from "@/stores/useAppStateStore";
+import {
+  getAssets,
+  getPlans,
+  newDailyInstance,
+  type PanelInstance,
+  type PanelPlan
+} from "@/services/apis/panel";
+import { message } from "ant-design-vue";
 
 import BetweenMenus from "@/components/BetweenMenus.vue";
 import { router } from "@/config/router";
@@ -43,6 +56,91 @@ import Shortcut from "./instance/Shortcut.vue";
 defineProps<{
   card: LayoutCard;
 }>();
+
+const { state } = useAppStateStore();
+const userBalance = ref(0);
+const panelInstances = ref<PanelInstance[]>([]);
+const panelPlans = ref<PanelPlan[]>([]);
+const assetsLoading = ref(false);
+const isRentModalOpen = ref(false);
+const rentLoading = ref(false);
+
+interface PlanWithDailyPrice extends PanelPlan {
+  display_daily_price: number;
+}
+const plansWithPrice = ref<PlanWithDailyPrice[]>([]);
+
+const panelInstanceMap = computed(() => {
+  const map = new Map<string, PanelInstance>();
+  for (const inst of panelInstances.value) {
+    if (inst.mcsm_uuid) map.set(inst.mcsm_uuid, inst);
+  }
+  return map;
+});
+
+const planPriceMap = computed(() => {
+  const map = new Map<string, number>();
+  for (const plan of panelPlans.value) {
+    map.set(plan.id, plan.daily_price ?? Math.round(plan.monthly_price / 30));
+  }
+  return map;
+});
+
+const loadAssets = async () => {
+  const username = state.userInfo?.userName;
+  if (!username) return;
+  assetsLoading.value = true;
+  try {
+    const data = await getAssets(username);
+    userBalance.value = data.user.balance;
+    panelInstances.value = data.instances;
+  } catch (e) {
+    // 靜默
+  } finally {
+    assetsLoading.value = false;
+  }
+};
+
+const loadPlans = async () => {
+  try {
+    const data = await getPlans();
+    panelPlans.value = data.plans;
+    plansWithPrice.value = data.plans.map((p) => ({
+      ...p,
+      display_daily_price: p.daily_price ?? Math.round(p.monthly_price / 30)
+    }));
+  } catch (e) {
+    // 靜默
+  }
+};
+
+const openShop = () => {
+  window.open("https://shop.ouob.net", "_blank");
+};
+
+const handleSelectPlan = async (plan: PlanWithDailyPrice) => {
+  const username = state.userInfo?.userName;
+  if (!username) return message.error("請先登入");
+  rentLoading.value = true;
+  try {
+    const result = await newDailyInstance({ mcsm_username: username, plan_id: plan.id, hours: 24 });
+    message.success(`伺服器開通成功！帳號：${result.username}`);
+    isRentModalOpen.value = false;
+    await loadAssets();
+    await initInstancesData();
+  } catch (err: any) {
+    const detail = err?.response?.data?.detail;
+    if (detail === "insufficient_balance") {
+      message.error("金幣不足，請先前往商城儲值");
+    } else if (detail === "no_account_please_topup") {
+      message.error("帳號尚未建立，請先至商城購買儲值卡以開通帳號");
+    } else {
+      message.error(detail || "開通失敗，請稍後再試");
+    }
+  } finally {
+    rentLoading.value = false;
+  }
+};
 
 const { isPhone } = useScreen();
 const operationForm = ref({
@@ -332,6 +430,8 @@ const batchDeleteInstance = async (deleteFile: boolean) => {
 onMounted(async () => {
   await initInstancesData();
   setRefreshFn(initInstancesData);
+  loadAssets();
+  loadPlans();
 });
 </script>
 
@@ -421,6 +521,29 @@ onMounted(async () => {
           </template>
         </BetweenMenus>
       </a-col>
+      <!-- 資產 Widget -->
+      <a-col :span="24">
+        <div class="asset-widget">
+          <div class="asset-balance">
+            <WalletOutlined class="asset-icon" />
+            <a-spin v-if="assetsLoading" size="small" />
+            <span v-else class="balance-num">{{ userBalance }}</span>
+            <span class="balance-unit">金幣</span>
+            <a-button size="small" type="text" @click="loadAssets" style="margin-left: 4px">
+              <ReloadOutlined />
+            </a-button>
+          </div>
+          <div class="asset-actions">
+            <a-button size="small" @click="openShop">
+              <ShoppingCartOutlined /> 儲值
+            </a-button>
+            <a-button size="small" type="primary" @click="isRentModalOpen = true">
+              <ScheduleOutlined /> 開通日租
+            </a-button>
+          </div>
+        </div>
+      </a-col>
+
       <a-col :span="24">
         <BetweenMenus>
           <template v-if="instances" #left>
@@ -524,8 +647,10 @@ onMounted(async () => {
                 :card="card"
                 :target-instance-info="item"
                 :target-daemon-id="currentRemoteNode?.uuid"
+                :panel-instance="panelInstanceMap.get(item.instanceUuid)"
+                :daily-price="panelInstanceMap.get(item.instanceUuid)?.plan_id ? planPriceMap.get(panelInstanceMap.get(item.instanceUuid)!.plan_id) : undefined"
                 @click="handleSelectInstance(item)"
-                @refresh-list="initInstancesData()"
+                @refresh-list="initInstancesData(); loadAssets();"
               />
             </a-col>
           </fade-up-animation>
@@ -549,9 +674,102 @@ onMounted(async () => {
       </a-col>
     </a-row>
   </div>
+
+  <!-- 日租方案 Modal -->
+  <a-modal
+    v-model:open="isRentModalOpen"
+    title="選擇日租方案"
+    :footer="null"
+    width="560px"
+    centered
+  >
+    <a-spin :spinning="rentLoading">
+      <div class="plan-list">
+        <a-empty v-if="plansWithPrice.length === 0" description="暫無可用方案" />
+        <a-card
+          v-for="plan in plansWithPrice"
+          :key="plan.id"
+          class="plan-card"
+          hoverable
+        >
+          <div class="plan-header">
+            <h3>{{ plan.name }}</h3>
+            <div class="plan-price">{{ plan.display_daily_price }} 金幣 / 天</div>
+          </div>
+          <p class="plan-desc">RAM {{ plan.ram_mb / 1024 }}GB・儲存空間 {{ plan.storage_gb }}GB</p>
+          <a-button type="primary" block @click="handleSelectPlan(plan)" :loading="rentLoading">
+            選擇此方案
+          </a-button>
+        </a-card>
+      </div>
+    </a-spin>
+  </a-modal>
 </template>
 
 <style lang="scss" scoped>
+.asset-widget {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--color-gray-2);
+  border-radius: 8px;
+  border: 1px solid var(--color-gray-4);
+
+  .asset-balance {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .asset-icon {
+      font-size: 18px;
+      color: #fadb14;
+    }
+
+    .balance-num {
+      font-size: 20px;
+      font-weight: bold;
+      color: #fadb14;
+    }
+
+    .balance-unit {
+      font-size: 13px;
+      color: var(--color-gray-8);
+    }
+  }
+
+  .asset-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+.plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 4px;
+
+  .plan-card {
+    border-radius: 8px;
+
+    .plan-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+
+      h3 { margin: 0; font-size: 16px; font-weight: 600; }
+      .plan-price { font-size: 18px; font-weight: bold; color: #fadb14; }
+    }
+
+    .plan-desc { color: var(--color-gray-8); margin-bottom: 12px; font-size: 13px; }
+  }
+}
+
 .search-input {
   transition: all 0.6s;
   text-align: center;

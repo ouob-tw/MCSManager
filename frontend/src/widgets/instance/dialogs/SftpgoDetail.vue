@@ -164,7 +164,7 @@ defineExpose({
           class="mb-4"
         />
 
-        <a-descriptions bordered column="1" size="small">
+        <a-descriptions bordered :column="1" size="small">
           <a-descriptions-item label="Host">
             <a-typography-text copyable>{{ host }}</a-typography-text>
           </a-descriptions-item>
