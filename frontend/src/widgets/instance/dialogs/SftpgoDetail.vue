@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { t } from "@/lang/i18n";
-import { createSftpgoUser, getSftpgoUser, resetSftpgoPassword } from "@/services/apis/sftpgo";
+import {
+  createSftpgoUser,
+  getSftpgoUser,
+  resetSftpgoPassword,
+  type SftpgoUserResponse
+} from "@/services/apis/sftpgo";
 import type { InstanceDetail } from "@/types";
 import { message } from "ant-design-vue";
 import { computed, ref } from "vue";
@@ -17,7 +22,7 @@ const { isPhone } = useScreen();
 const open = ref(false);
 const loading = ref(false);
 const enableLoading = ref(false);
-const sftpInfo = ref<any>(null);
+const sftpInfo = ref<SftpgoUserResponse | null>(null);
 const isEnabled = ref(false);
 const form = ref({ username: "", password: "" }); // Username generated automatically usually
 const passwordForm = ref({ password: "" });
@@ -35,7 +40,7 @@ const loadSftpInfo = async () => {
 
   try {
     // Attempt to get user. If 404, valid but not enabled.
-    const res = await getSftpgoUser(targetUsername);
+    const res = await getSftpgoUser(targetUsername, props.instanceId);
     if (res && res.username) {
       sftpInfo.value = res;
       isEnabled.value = true;
@@ -88,6 +93,9 @@ const handleReset = async () => {
       new_password: passwordForm.value.password
     });
     message.success("Password Reset Successfully!");
+    if (sftpInfo.value) {
+      sftpInfo.value.password = passwordForm.value.password;
+    }
     passwordForm.value.password = "";
   } catch (error: any) {
     message.error(error.message || "Failed to reset password");
@@ -173,6 +181,15 @@ defineExpose({
           </a-descriptions-item>
           <a-descriptions-item label="Username">
             <a-typography-text copyable>{{ sftpInfo.username }}</a-typography-text>
+          </a-descriptions-item>
+          <a-descriptions-item label="Password">
+            <a-typography-text
+              v-if="sftpInfo.password"
+              :copyable="{ text: sftpInfo.password }"
+            >
+              {{ sftpInfo.password }}
+            </a-typography-text>
+            <span v-else>—</span>
           </a-descriptions-item>
           <a-descriptions-item label="Home Directory">
             <a-typography-text code>{{ sftpInfo.home_dir }}</a-typography-text>

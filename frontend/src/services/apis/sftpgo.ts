@@ -15,6 +15,7 @@ export interface SftpgoUserResponse {
     port: number;
     home_dir?: string;
     ip?: string;
+    password?: string | null;
 }
 
 export interface SftpgoErrorResponse {
@@ -44,8 +45,10 @@ export const resetSftpgoPassword = async (params: { username: string; new_passwo
     return res.data;
 };
 
-export const getSftpgoUser = async (username: string) => {
+export const getSftpgoUser = async (username: string, instanceId?: string) => {
     const url = `${getServiceUrl()}/user/${username}`;
-    const res = await request.get(url);
+    const res = await request.get(url, {
+        params: instanceId ? { instance_id: instanceId } : undefined
+    });
     return res.data;
 };

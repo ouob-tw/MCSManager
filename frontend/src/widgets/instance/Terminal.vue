@@ -8,6 +8,7 @@ import { useLayoutCardTools } from "@/hooks/useCardTools";
 import { INSTANCE_TYPE_TRANSLATION, verifyEULA } from "@/hooks/useInstance";
 import { useScreen } from "@/hooks/useScreen";
 import { t } from "@/lang/i18n";
+import { getAssets, getPlans } from "@/services/apis/panel";
 import {
   killInstance,
   openInstance,
@@ -42,7 +43,7 @@ import {
 import { useLocalStorage } from "@vueuse/core";
 import { Modal } from "ant-design-vue";
 import prettyBytes, { type Options as PrettyOptions } from "pretty-bytes";
-import { computed, h, onUnmounted, ref } from "vue";
+import { computed, h, onMounted, onUnmounted, ref } from "vue";
 import type { TagInfo } from "../../components/interface";
 import { GLOBAL_INSTANCE_NAME } from "../../config/const";
 import { useTerminal, type UseTerminalHook } from "../../hooks/useTerminal";
@@ -77,6 +78,7 @@ const innerTerminalType = computed(() => props.card.width === 12 && viewType ===
 const instanceTypeText = computed(
   () => INSTANCE_TYPE_TRANSLATION[instanceInfo.value?.config.type ?? -1]
 );
+const consolePlanName = ref("");
 
 const { execute: requestOpenInstance, isLoading: isOpenInstanceLoading } = openInstance();
 
@@ -379,6 +381,19 @@ const panelHeightStyle = computed(() => {
 onUnmounted(() => {
   if (checkRunningTimer) clearTimeout(checkRunningTimer);
 });
+
+onMounted(async () => {
+  if (isAdmin.value) return;
+  if (!state.userInfo?.userName || !instanceId) return;
+  try {
+    const [assets, planRes] = await Promise.all([getAssets(state.userInfo.userName), getPlans()]);
+    const panelInstance = assets.instances.find((item) => item.mcsm_uuid === instanceId);
+    const selectedPlan = planRes.plans.find((item) => item.id === panelInstance?.console_plan_id);
+    consolePlanName.value = selectedPlan?.name || "";
+  } catch {
+    consolePlanName.value = "";
+  }
+});
 </script>
 
 <template>
@@ -409,6 +424,7 @@ onUnmounted(() => {
               </span>
 
               <a-tag v-if="instanceTypeText" color="purple"> {{ instanceTypeText }} </a-tag>
+              <a-tag v-if="consolePlanName" color="blue">版本：{{ consolePlanName }}</a-tag>
 
               <span
                 v-if="instanceInfo?.watcher && instanceInfo?.watcher > 1 && !isPhone"
@@ -539,6 +555,7 @@ onUnmounted(() => {
           {{ instanceStatusText }}
         </a-tag>
         <a-tag color="purple"> {{ instanceTypeText }} </a-tag>
+        <a-tag v-if="consolePlanName" color="blue">版本：{{ consolePlanName }}</a-tag>
       </span>
     </template>
     <template #operator>

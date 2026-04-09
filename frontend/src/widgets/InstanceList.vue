@@ -26,6 +26,7 @@ import {
   getAssets,
   getPlans,
   newDailyInstance,
+  newMonthlyInstance,
   type PanelInstance,
   type PanelPlan
 } from "@/services/apis/panel";
@@ -86,6 +87,14 @@ const planPriceMap = computed(() => {
   return map;
 });
 
+const planMonthlyPriceMap = computed(() => {
+  const map = new Map<string, number>();
+  for (const plan of panelPlans.value) {
+    map.set(plan.id, plan.monthly_price);
+  }
+  return map;
+});
+
 const loadAssets = async () => {
   const username = state.userInfo?.userName;
   if (!username) return;
@@ -118,12 +127,19 @@ const openShop = () => {
   window.open("https://shop.ouob.net", "_blank");
 };
 
-const handleSelectPlan = async (plan: PlanWithDailyPrice) => {
+const showBillingModal = (title: string, content: string) => {
+  Modal.warning({ title, content });
+};
+
+const handleSelectPlan = async (plan: PlanWithDailyPrice, billingType: "daily" | "monthly") => {
   const username = state.userInfo?.userName;
   if (!username) return message.error("請先登入");
   rentLoading.value = true;
   try {
-    const result = await newDailyInstance({ mcsm_username: username, plan_id: plan.id, hours: 24 });
+    const result =
+      billingType === "monthly"
+        ? await newMonthlyInstance({ mcsm_username: username, plan_id: plan.id, days: 30 })
+        : await newDailyInstance({ mcsm_username: username, plan_id: plan.id, hours: 24 });
     message.success(`伺服器開通成功！帳號：${result.username}`);
     isRentModalOpen.value = false;
     await loadAssets();
@@ -131,9 +147,9 @@ const handleSelectPlan = async (plan: PlanWithDailyPrice) => {
   } catch (err: any) {
     const detail = err?.response?.data?.detail;
     if (detail === "insufficient_balance") {
-      message.error("金幣不足，請先前往商城儲值");
+      showBillingModal("金幣不足", "目前金幣不足，無法完成此次租用。請先前往商城儲值。");
     } else if (detail === "no_account_please_topup") {
-      message.error("帳號尚未建立，請先至商城購買儲值卡以開通帳號");
+      showBillingModal("帳號尚未建立", "請先至商城購買儲值卡或完成首次儲值，以開通帳號。");
     } else {
       message.error(detail || "開通失敗，請稍後再試");
     }
@@ -649,6 +665,7 @@ onMounted(async () => {
                 :target-daemon-id="currentRemoteNode?.uuid"
                 :panel-instance="panelInstanceMap.get(item.instanceUuid)"
                 :daily-price="panelInstanceMap.get(item.instanceUuid)?.plan_id ? planPriceMap.get(panelInstanceMap.get(item.instanceUuid)!.plan_id) : undefined"
+                :monthly-price="panelInstanceMap.get(item.instanceUuid)?.plan_id ? planMonthlyPriceMap.get(panelInstanceMap.get(item.instanceUuid)!.plan_id) : undefined"
                 @click="handleSelectInstance(item)"
                 @refresh-list="initInstancesData(); loadAssets();"
               />
@@ -678,7 +695,7 @@ onMounted(async () => {
   <!-- 日租方案 Modal -->
   <a-modal
     v-model:open="isRentModalOpen"
-    title="選擇日租方案"
+    title="選擇租用方案"
     :footer="null"
     width="560px"
     centered
@@ -696,10 +713,17 @@ onMounted(async () => {
             <h3>{{ plan.name }}</h3>
             <div class="plan-price">{{ plan.display_daily_price }} 金幣 / 天</div>
           </div>
-          <p class="plan-desc">RAM {{ plan.ram_mb / 1024 }}GB・儲存空間 {{ plan.storage_gb }}GB</p>
-          <a-button type="primary" block @click="handleSelectPlan(plan)" :loading="rentLoading">
-            選擇此方案
-          </a-button>
+          <p class="plan-desc">
+            RAM {{ plan.ram_mb / 1024 }}GB・儲存空間 {{ plan.storage_gb }}GB・月租 {{ plan.monthly_price }} 金幣
+          </p>
+          <div class="plan-actions">
+            <a-button type="default" block @click="handleSelectPlan(plan, 'monthly')" :loading="rentLoading">
+              月租開通
+            </a-button>
+            <a-button type="primary" block @click="handleSelectPlan(plan, 'daily')" :loading="rentLoading">
+              日租開通
+            </a-button>
+          </div>
         </a-card>
       </div>
     </a-spin>
@@ -767,6 +791,11 @@ onMounted(async () => {
     }
 
     .plan-desc { color: var(--color-gray-8); margin-bottom: 12px; font-size: 13px; }
+
+    .plan-actions {
+      display: flex;
+      gap: 8px;
+    }
   }
 }
 

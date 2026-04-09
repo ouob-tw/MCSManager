@@ -4,7 +4,9 @@ import type { LoginUserInfo } from "@/types/user";
 import InstallPage from "@/views/Install.vue";
 import LayoutContainer from "@/views/LayoutContainer.vue";
 import LoginPage from "@/views/Login.vue";
+import ConsolePlanSelectPage from "@/views/ConsolePlanSelect.vue";
 import ServicesPage from "@/views/Services.vue";
+import { getAssets } from "@/services/apis/panel";
 import {
   createRouter,
   createWebHashHistory,
@@ -276,6 +278,15 @@ const originRouterConfig: RouterConfig[] = [
     }
   },
   {
+    path: "/instances/terminal/version-select",
+    name: "選擇控制台版本",
+    component: ConsolePlanSelectPage,
+    meta: {
+      permission: ROLE.USER,
+      mainMenu: false
+    }
+  },
+  {
     path: "/customer",
     name: t("TXT_CODE_ec299306"),
     component: LayoutContainer,
@@ -355,7 +366,12 @@ const router = createRouter({
   routes: routersConfigOptimize(originRouterConfig) as RouteRecordRaw[]
 });
 
-router.beforeEach((to, from, next) => {
+function isExpiredIsoString(value: string | null | undefined) {
+  if (!value) return false;
+  return new Date(value).getTime() < Date.now();
+}
+
+router.beforeEach(async (to, from, next) => {
   const { state } = useAppStateStore();
 
   const userPermission = state.userInfo?.permission ?? 0;
@@ -402,6 +418,45 @@ router.beforeEach((to, from, next) => {
 
   if (toPagePermission > userPermission && userPermission !== ROLE.ADMIN) {
     return next("/customer");
+  }
+
+  if (
+    userPermission < ROLE.ADMIN &&
+    toRoutePath.startsWith("/instances/terminal")
+  ) {
+    const instanceUuid = String(to.query.instanceId || "");
+    const username = state.userInfo?.userName;
+    if (instanceUuid && username) {
+      try {
+        const assets = await getAssets(username);
+        const panelInstance = assets.instances.find((item) => item.mcsm_uuid === instanceUuid);
+        if (panelInstance && isExpiredIsoString(panelInstance.expire_at)) {
+          return next("/customer");
+        }
+        if (panelInstance) {
+          const isSelectionPage = toRoutePath === "/instances/terminal/version-select";
+          if (!panelInstance.console_plan_id && !isSelectionPage) {
+            return next({
+              path: "/instances/terminal/version-select",
+              query: {
+                ...to.query,
+              }
+            });
+          }
+          if (panelInstance.console_plan_id && isSelectionPage) {
+            return next({
+              path: "/instances/terminal",
+              query: {
+                daemonId: String(to.query.daemonId || ""),
+                instanceId: instanceUuid,
+              }
+            });
+          }
+        }
+      } catch {
+        // Ignore panel lookup failures and keep existing navigation behavior.
+      }
+    }
   }
 
   if (toPagePermission <= userPermission) {

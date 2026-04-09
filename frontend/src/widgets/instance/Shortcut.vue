@@ -13,6 +13,11 @@ import {
   stopInstance,
   updateInstance
 } from "@/services/apis/instance";
+import {
+  renewDaily,
+  renewMonthly,
+  type PanelInstance
+} from "@/services/apis/panel";
 import { useLayoutContainerStore } from "@/stores/useLayoutContainerStore";
 import { arrayFilter } from "@/tools/array";
 import { formatMemoryUsage } from "@/tools/memory";
@@ -33,10 +38,9 @@ import {
   TagsOutlined,
   UserOutlined
 } from "@ant-design/icons-vue";
-import { message, Modal } from "ant-design-vue";
+import { InputNumber, message, Modal } from "ant-design-vue";
 import _ from "lodash";
-import { computed, ref } from "vue";
-import { renewDaily, type PanelInstance } from "@/services/apis/panel";
+import { computed, h, ref } from "vue";
 
 const props = defineProps<{
   card: LayoutCard;
@@ -44,6 +48,7 @@ const props = defineProps<{
   targetDaemonId?: string;
   panelInstance?: PanelInstance;
   dailyPrice?: number;
+  monthlyPrice?: number;
 }>();
 
 const emits = defineEmits(["refreshList"]);
@@ -62,25 +67,44 @@ const formattedExpire = computed(() => {
 });
 
 const renewLoading = ref(false);
+const renewMonthlyLoading = ref(false);
+
+const showBillingModal = (title: string, content: string) => {
+  Modal.warning({ title, content });
+};
 
 const handleRenew = async (event: MouseEvent) => {
   event.stopPropagation();
   const inst = props.panelInstance;
   if (!inst) return;
-  const cost = props.dailyPrice ?? 0;
+  const days = ref(1);
   Modal.confirm({
     title: "確認續費",
-    content: `花費 ${cost} 金幣，為此伺服器續費 24 小時？`,
+    content: () =>
+      h("div", { style: "display:flex;flex-direction:column;gap:12px;" }, [
+        h("div", `每日 ${props.dailyPrice ?? 0} 金幣，選擇要續幾天`),
+        h(InputNumber as any, {
+          min: 1,
+          precision: 0,
+          value: days.value,
+          style: "width:100%;",
+          addonAfter: "天",
+          "onUpdate:value": (value: number | null) => {
+            days.value = Math.max(1, Number(value || 1));
+          }
+        })
+      ]),
     onOk: async () => {
+      const safeDays = Math.max(1, Number(days.value || 1));
       renewLoading.value = true;
       try {
-        await renewDaily(inst.id, 24, cost);
+        await renewDaily(inst.id, safeDays * 24);
         message.success("續費成功！");
         refreshList();
       } catch (err: any) {
         const detail = err?.response?.data?.detail;
         if (detail === "insufficient_balance") {
-          message.error("金幣不足");
+          showBillingModal("金幣不足", "目前金幣不足，無法完成此次續費。請先前往商城儲值。");
         } else {
           message.error(detail || "續費失敗，請稍後再試");
         }
@@ -90,6 +114,49 @@ const handleRenew = async (event: MouseEvent) => {
     }
   });
 };
+
+const handleRenewMonthly = async (event: MouseEvent) => {
+  event.stopPropagation();
+  const inst = props.panelInstance;
+  if (!inst) return;
+  const months = ref(1);
+  Modal.confirm({
+    title: "確認月租續費",
+    content: () =>
+      h("div", { style: "display:flex;flex-direction:column;gap:12px;" }, [
+        h("div", `每月 ${props.monthlyPrice ?? 0} 金幣，選擇要續幾個月`),
+        h(InputNumber as any, {
+          min: 1,
+          precision: 0,
+          value: months.value,
+          style: "width:100%;",
+          addonAfter: "個月",
+          "onUpdate:value": (value: number | null) => {
+            months.value = Math.max(1, Number(value || 1));
+          }
+        })
+      ]),
+    onOk: async () => {
+      const safeMonths = Math.max(1, Number(months.value || 1));
+      renewMonthlyLoading.value = true;
+      try {
+        await renewMonthly(inst.id, safeMonths);
+        message.success("月租續費成功！");
+        refreshList();
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail;
+        if (detail === "insufficient_balance") {
+          showBillingModal("金幣不足", "目前金幣不足，無法完成此次續費。請先前往商城儲值。");
+        } else {
+          message.error(detail || "續費失敗，請稍後再試");
+        }
+      } finally {
+        renewMonthlyLoading.value = false;
+      }
+    }
+  });
+};
+
 
 const { containerState } = useLayoutContainerStore();
 const { getMetaOrRouteValue } = useLayoutCardTools(props.card);
@@ -161,6 +228,10 @@ const execInstanceAction = async (
   event: MouseEvent,
   actName: "start" | "stop" | "restart" | "kill" | "update"
 ) => {
+  if (isExpired.value) {
+    message.error("此伺服器已到期，請先續費");
+    return;
+  }
   const action = actions[actName];
   try {
     if (action) {
@@ -182,7 +253,7 @@ const instanceOperations = computed(() =>
         await execInstanceAction(event, "start");
       },
       loading: openLoading.value,
-      disabled: containerState.isDesignMode,
+      disabled: containerState.isDesignMode || isExpired.value,
       condition: () => isStopped.value
     },
     {
@@ -200,7 +271,7 @@ const instanceOperations = computed(() =>
         return false;
       },
       loading: stopLoading.value,
-      disabled: containerState.isDesignMode,
+      disabled: containerState.isDesignMode || isExpired.value,
       condition: () => isRunning.value
     },
     {
@@ -217,7 +288,7 @@ const instanceOperations = computed(() =>
         });
       },
       loading: restartLoading.value,
-      disabled: containerState.isDesignMode,
+      disabled: containerState.isDesignMode || isExpired.value,
       condition: () => isRunning.value
     },
     {
@@ -228,7 +299,7 @@ const instanceOperations = computed(() =>
         execInstanceAction(event, "update");
       },
       loading: updateLoading.value,
-      disabled: containerState.isDesignMode,
+      disabled: containerState.isDesignMode || isExpired.value,
       condition: () => isStopped.value
     },
     {
@@ -245,7 +316,7 @@ const instanceOperations = computed(() =>
         });
       },
       loading: killLoading.value,
-      disabled: containerState.isDesignMode,
+      disabled: containerState.isDesignMode || isExpired.value,
       danger: true,
       condition: () => !isStopped.value
     },
@@ -270,6 +341,10 @@ const instanceOperations = computed(() =>
       icon: CodeOutlined,
       click: (event: MouseEvent) => {
         event.stopPropagation();
+        if (isExpired.value) {
+          message.error("此伺服器已到期，請先續費");
+          return;
+        }
         toPage({
           path: "/instances/terminal",
           query: {
@@ -278,7 +353,7 @@ const instanceOperations = computed(() =>
           }
         });
       },
-      disabled: containerState.isDesignMode
+      disabled: containerState.isDesignMode || isExpired.value
     },
     {
       title: t("TXT_CODE_a0e19f38"),
@@ -337,7 +412,7 @@ const instanceOperations = computed(() =>
             <span class="title">{{ t("TXT_CODE_34611898") }}:</span>
             <span class="value"> {{ parseTimestamp(instanceInfo?.config.lastDatetime) }}</span>
           </div>
-          <div v-if="instanceInfo?.config.endTime" class="instance-info-line">
+          <div v-if="instanceInfo?.config.endTime && !panelInstance" class="instance-info-line">
             <span class="title">{{ t("TXT_CODE_fa920c0") }}:</span>
             <span> {{ parseTimestamp(instanceInfo?.config.endTime) }}</span>
           </div>
@@ -421,6 +496,17 @@ const instanceOperations = computed(() =>
             续费 24h（{{ dailyPrice ?? 0 }} 金幣）
           </a-button>
         </div>
+        <div v-if="panelInstance && panelInstance.billing_type === 'monthly'" class="renew-bar" @click.stop>
+          <a-button
+            size="small"
+            type="primary"
+            ghost
+            :loading="renewMonthlyLoading"
+            @click="handleRenewMonthly"
+          >
+            月租續費 30 天（{{ monthlyPrice ?? 0 }} 金幣）
+          </a-button>
+        </div>
       </div>
     </template>
   </CardPanel>
@@ -469,4 +555,5 @@ const instanceOperations = computed(() =>
 .renew-bar {
   margin-top: 6px;
 }
+
 </style>
