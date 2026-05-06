@@ -279,7 +279,7 @@ const originRouterConfig: RouterConfig[] = [
   },
   {
     path: "/instances/terminal/version-select",
-    name: "選擇控制台版本",
+    name: "選擇遊戲模板",
     component: ConsolePlanSelectPage,
     meta: {
       permission: ROLE.USER,
@@ -435,7 +435,11 @@ router.beforeEach(async (to, from, next) => {
         }
         if (panelInstance) {
           const isSelectionPage = toRoutePath === "/instances/terminal/version-select";
-          if (!panelInstance.console_plan_id && !isSelectionPage) {
+          const requiresSelection = Boolean(
+            panelInstance.require_version_selection ?? panelInstance.require_console_plan_selection
+          );
+          const selectionFinished = !requiresSelection && panelInstance.runtime_status === "active";
+          if (requiresSelection && !isSelectionPage) {
             return next({
               path: "/instances/terminal/version-select",
               query: {
@@ -443,7 +447,7 @@ router.beforeEach(async (to, from, next) => {
               }
             });
           }
-          if (panelInstance.console_plan_id && isSelectionPage) {
+          if (selectionFinished && isSelectionPage) {
             return next({
               path: "/instances/terminal",
               query: {

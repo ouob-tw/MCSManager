@@ -57,6 +57,7 @@ export default class DockerPullCommand extends InstanceCommand {
 
   async exec(instance: Instance) {
     const imageName = instance.config.docker.image;
+    const imagePlatform = instance.config.docker.platform || undefined;
     if (!imageName) throw new Error(t("TXT_CODE_17be5f70"));
     const cachedStartCount = instance.startCount;
 
@@ -68,7 +69,7 @@ export default class DockerPullCommand extends InstanceCommand {
       instance.println("CONTAINER", t("TXT_CODE_2fa46b8c") + imageName);
       instance.asynchronousTask = this;
 
-      await docker.pull(imageName, {});
+      await docker.pull(imageName, imagePlatform ? { platform: imagePlatform } : {});
 
       await this.awaitImageDone(instance, imageName);
       if (cachedStartCount !== instance.startCount) return;

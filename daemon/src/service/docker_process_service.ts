@@ -232,6 +232,7 @@ export class SetupDockerContainer extends AsyncTask {
 
     logger.info(`Container Entrypoint: ${entrypoint}`);
     logger.info(`Container Start Command: ${startCmd}`);
+    logger.info(`Container Platform: ${dockerConfig.platform || "--"}`);
     logger.info(`Docker Version: ${dockerVersion}`);
     logger.info("----------------");
 
@@ -241,6 +242,7 @@ export class SetupDockerContainer extends AsyncTask {
       name: containerName,
       Hostname: containerName,
       Image: dockerConfig.image,
+      platform: dockerConfig.platform || undefined,
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,
